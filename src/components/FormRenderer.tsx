@@ -1,0 +1,303 @@
+// Form Renderer component for displaying and interacting with forms
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Checkbox,
+  FormGroup,
+  Button,
+  Alert,
+  Paper,
+  Typography,
+  Grid
+} from '@mui/material';
+// We'll use regular date input for now instead of MUI date picker to avoid dependency issues
+import { FormSchema, FormField, FieldError } from '../types/formBuilder';
+import { validateForm } from '../utils/validation';
+import { updateDerivedFields } from '../utils/derivedFields';
+
+interface FormRendererProps {
+  form: FormSchema;
+  onSubmit?: (data: Record<string, any>) => void;
+  showSubmitButton?: boolean;
+}
+
+const FormRenderer: React.FC<FormRendererProps> = ({ 
+  form, 
+  onSubmit, 
+  showSubmitButton = true 
+}) => {
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [errors, setErrors] = useState<FieldError[]>([]);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  // Update derived fields whenever form data changes
+  useEffect(() => {
+    const updatedData = updateDerivedFields(form.fields, formData);
+    if (JSON.stringify(updatedData) !== JSON.stringify(formData)) {
+      setFormData(updatedData);
+    }
+  }, [formData, form.fields]);
+
+  const handleFieldChange = (fieldId: string, value: any) => {
+    const newFormData = { ...formData, [fieldId]: value };
+    setFormData(newFormData);
+    setTouched({ ...touched, [fieldId]: true });
+
+    // Validate the specific field
+    const field = form.fields.find(f => f.id === fieldId);
+    if (field) {
+      const validationResult = validateForm([field], newFormData);
+      setErrors(prevErrors => [
+        ...prevErrors.filter(e => e.fieldId !== fieldId),
+        ...validationResult.errors
+      ]);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate all fields
+    const validationResult = validateForm(form.fields, formData);
+    setErrors(validationResult.errors);
+    
+    // Mark all fields as touched
+    const allTouched = form.fields.reduce((acc, field) => {
+      acc[field.id] = true;
+      return acc;
+    }, {} as Record<string, boolean>);
+    setTouched(allTouched);
+
+    if (validationResult.isValid && onSubmit) {
+      onSubmit(formData);
+    }
+  };
+
+  const getFieldError = (fieldId: string): string | undefined => {
+    const error = errors.find(e => e.fieldId === fieldId);
+    return touched[fieldId] ? error?.message : undefined;
+  };
+
+  const renderField = (field: FormField) => {
+    const value = formData[field.id] || '';
+    const error = getFieldError(field.id);
+    const hasError = Boolean(error);
+
+    switch (field.type) {
+      case 'text':
+        return (
+          <TextField
+            fullWidth
+            label={field.label}
+            placeholder={field.placeholder}
+            value={value}
+            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+            required={field.required}
+            error={hasError}
+            helperText={error}
+          />
+        );
+
+      case 'number':
+        return (
+          <TextField
+            fullWidth
+            type="number"
+            label={field.label}
+            placeholder={field.placeholder}
+            value={value}
+            onChange={(e) => handleFieldChange(field.id, parseFloat(e.target.value) || '')}
+            required={field.required}
+            error={hasError}
+            helperText={error}
+          />
+        );
+
+      case 'date':
+        return (
+          <TextField
+            fullWidth
+            type="date"
+            label={field.label}
+            placeholder={field.placeholder}
+            value={value ? new Date(value).toISOString().split('T')[0] : ''}
+            onChange={(e) => handleFieldChange(field.id, e.target.value ? new Date(e.target.value).toISOString() : '')}
+            required={field.required}
+            error={hasError}
+            helperText={error}
+            InputLabelProps={{ shrink: true }}
+          />
+        );
+
+      case 'select':
+        return (
+          <FormControl fullWidth required={field.required} error={hasError}>
+            <InputLabel>{field.label}</InputLabel>
+            <Select
+              value={value}
+              onChange={(e) => handleFieldChange(field.id, e.target.value)}
+              label={field.label}
+            >
+              {field.options?.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+            {error && (
+              <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 2 }}>
+                {error}
+              </Typography>
+            )}
+          </FormControl>
+        );
+
+      case 'radio':
+        return (
+          <FormControl required={field.required} error={hasError}>
+            <FormLabel>{field.label}</FormLabel>
+            <RadioGroup
+              value={value}
+              onChange={(e) => handleFieldChange(field.id, e.target.value)}
+            >
+              {field.options?.map((option) => (
+                <FormControlLabel
+                  key={option.value}
+                  value={option.value}
+                  control={<Radio />}
+                  label={option.label}
+                />
+              ))}
+            </RadioGroup>
+            {error && (
+              <Typography variant="caption" color="error">
+                {error}
+              </Typography>
+            )}
+          </FormControl>
+        );
+
+      case 'checkbox':
+        const checkboxValues = Array.isArray(value) ? value : [];
+        return (
+          <FormControl required={field.required} error={hasError}>
+            <FormLabel>{field.label}</FormLabel>
+            <FormGroup>
+              {field.options?.map((option) => (
+                <FormControlLabel
+                  key={option.value}
+                  control={
+                    <Checkbox
+                      checked={checkboxValues.includes(option.value)}
+                      onChange={(e) => {
+                        const newValues = e.target.checked
+                          ? [...checkboxValues, option.value]
+                          : checkboxValues.filter(v => v !== option.value);
+                        handleFieldChange(field.id, newValues);
+                      }}
+                    />
+                  }
+                  label={option.label}
+                />
+              ))}
+            </FormGroup>
+            {error && (
+              <Typography variant="caption" color="error">
+                {error}
+              </Typography>
+            )}
+          </FormControl>
+        );
+
+      case 'textarea':
+        return (
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label={field.label}
+            placeholder={field.placeholder}
+            value={value}
+            onChange={(e) => handleFieldChange(field.id, e.target.value)}
+            required={field.required}
+            error={hasError}
+            helperText={error}
+          />
+        );
+
+      case 'derived':
+        return (
+          <TextField
+            fullWidth
+            label={field.label}
+            value={value || 'Calculating...'}
+            InputProps={{ readOnly: true }}
+            variant="filled"
+            sx={{ 
+              '& .MuiFilledInput-root': { 
+                backgroundColor: 'action.hover' 
+              } 
+            }}
+          />
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <Paper sx={{ p: 4 }}>
+      <form onSubmit={handleSubmit}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {form.fields
+            .sort((a, b) => a.order - b.order)
+            .map((field) => (
+              <Box key={field.id}>
+                {renderField(field)}
+              </Box>
+            ))}
+        </Box>
+
+        {errors.length > 0 && (
+          <Alert severity="error" sx={{ mt: 3 }}>
+            Please fix the following errors:
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {errors.map((error, index) => (
+                <li key={index}>{error.message}</li>
+              ))}
+            </ul>
+          </Alert>
+        )}
+
+        {showSubmitButton && (
+          <Box sx={{ mt: 4, textAlign: 'center' }}>
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              sx={{ 
+                px: 4,
+                py: 1.5,
+                background: 'var(--primary-gradient)',
+              }}
+            >
+              Submit Form
+            </Button>
+          </Box>
+        )}
+      </form>
+    </Paper>
+  );
+};
+
+export default FormRenderer;
