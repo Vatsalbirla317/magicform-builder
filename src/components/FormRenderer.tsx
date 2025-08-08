@@ -35,9 +35,23 @@ const FormRenderer: React.FC<FormRendererProps> = ({
   onSubmit, 
   showSubmitButton = true 
 }) => {
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  // Initialize form data with default values
+  const initializeFormData = (fields: FormField[]) => {
+    const initialData: Record<string, any> = {};
+    fields.forEach(field => {
+      initialData[field.id] = field.defaultValue || '';
+    });
+    return initialData;
+  };
+
+  const [formData, setFormData] = useState<Record<string, any>>(() => initializeFormData(form.fields));
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  // Update form data when form changes
+  useEffect(() => {
+    setFormData(initializeFormData(form.fields));
+  }, [form.fields]);
 
   // Update derived fields whenever form data changes
   useEffect(() => {

@@ -12,19 +12,29 @@ import {
   DialogContent,
   DialogActions,
   Fab,
-  Grid,
-  Chip,
-  IconButton,
-  Paper
+  Paper,
+  Chip
 } from '@mui/material';
 import { 
   Add, 
   Save, 
-  Preview, 
-  Delete,
-  DragIndicator,
-  Edit
+  Preview
 } from '@mui/icons-material';
+import { 
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { RootState } from '../store';
@@ -32,12 +42,18 @@ import {
   createNewForm, 
   saveCurrentForm, 
   addField, 
+  updateField,
+  deleteField,
+  reorderFields,
   updateFormMetadata,
   loadSavedForms 
 } from '../store/slices/formBuilderSlice';
 import { localStorageUtils } from '../utils/localStorage';
 import Layout from '../components/Layout';
 import FieldBuilder from '../components/FieldBuilder';
+import SortableFieldCard from '../components/SortableFieldCard';
+import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
+import FormNameDialog from '../components/FormNameDialog';
 import { FormField, FieldType } from '../types/formBuilder';
 
 const CreateForm = () => {
@@ -49,6 +65,17 @@ const CreateForm = () => {
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [fieldBuilderOpen, setFieldBuilderOpen] = useState(false);
+  const [editingField, setEditingField] = useState<FormField | undefined>(undefined);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [fieldToDelete, setFieldToDelete] = useState<FormField | null>(null);
+  const [formNameDialogOpen, setFormNameDialogOpen] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     // Load saved forms from localStorage on mount
@@ -68,14 +95,18 @@ const CreateForm = () => {
     }
   };
 
-  const handleSaveForm = () => {
+  const handleSaveForm = (name?: string) => {
     if (currentForm) {
+      if (name) {
+        dispatch(updateFormMetadata({ name }));
+      }
       dispatch(saveCurrentForm());
       // Persist to localStorage
       const savedForms = localStorageUtils.loadForms();
       const existingIndex = savedForms.findIndex(f => f.id === currentForm.id);
       const updatedForm = {
         ...currentForm,
+        ...(name && { name }),
         updatedAt: new Date().toISOString()
       };
       
@@ -90,8 +121,50 @@ const CreateForm = () => {
   };
 
   const handleAddField = (field: Omit<FormField, 'id' | 'order'>) => {
-    dispatch(addField(field as FormField));
+    if (editingField) {
+      dispatch(updateField({ fieldId: editingField.id, updates: field }));
+      setEditingField(undefined);
+    } else {
+      dispatch(addField(field as FormField));
+    }
     setFieldBuilderOpen(false);
+  };
+
+  const handleEditField = (field: FormField) => {
+    setEditingField(field);
+    setFieldBuilderOpen(true);
+  };
+
+  const handleDeleteField = (fieldId: string) => {
+    const field = currentForm?.fields.find(f => f.id === fieldId);
+    if (field) {
+      setFieldToDelete(field);
+      setDeleteDialogOpen(true);
+    }
+  };
+
+  const confirmDeleteField = () => {
+    if (fieldToDelete) {
+      dispatch(deleteField(fieldToDelete.id));
+      setFieldToDelete(null);
+      setDeleteDialogOpen(false);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id && currentForm) {
+      const oldIndex = currentForm.fields.findIndex(field => field.id === active.id);
+      const newIndex = currentForm.fields.findIndex(field => field.id === over.id);
+      
+      dispatch(reorderFields({ fromIndex: oldIndex, toIndex: newIndex }));
+    }
+  };
+
+  const handleCloseFieldBuilder = () => {
+    setFieldBuilderOpen(false);
+    setEditingField(undefined);
   };
 
   const fieldTypes: { type: FieldType; label: string; color: string }[] = [
@@ -189,7 +262,7 @@ const CreateForm = () => {
                 <Button
                   variant="contained"
                   startIcon={<Save />}
-                  onClick={handleSaveForm}
+                  onClick={() => setFormNameDialogOpen(true)}
                   sx={{ background: 'var(--primary-gradient)' }}
                 >
                   Save Form
@@ -260,52 +333,29 @@ const CreateForm = () => {
               </Button>
             </Paper>
           ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {currentForm.fields
-                .sort((a, b) => a.order - b.order)
-                .map((field) => (
-                  <Card key={field.id} className="field-preview">
-                    <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <DragIndicator sx={{ color: 'text.secondary', cursor: 'grab' }} />
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="h6" sx={{ mb: 1 }}>
-                            {field.label}
-                            {field.required && <span style={{ color: 'red' }}> *</span>}
-                          </Typography>
-                          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                            <Chip 
-                              label={field.type} 
-                              size="small" 
-                              color="primary" 
-                              variant="outlined" 
-                            />
-                            {field.validations.length > 0 && (
-                              <Chip 
-                                label={`${field.validations.length} validations`} 
-                                size="small" 
-                                color="secondary" 
-                                variant="outlined" 
-                              />
-                            )}
-                          </Box>
-                          {field.placeholder && (
-                            <Typography variant="body2" color="textSecondary">
-                              Placeholder: {field.placeholder}
-                            </Typography>
-                          )}
-                        </Box>
-                        <IconButton size="small" color="primary">
-                          <Edit />
-                        </IconButton>
-                        <IconButton size="small" color="error">
-                          <Delete />
-                        </IconButton>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                ))}
-            </Box>
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext 
+                items={currentForm.fields.map(f => f.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {currentForm.fields
+                    .sort((a, b) => a.order - b.order)
+                    .map((field) => (
+                      <SortableFieldCard
+                        key={field.id}
+                        field={field}
+                        onEdit={handleEditField}
+                        onDelete={handleDeleteField}
+                      />
+                    ))}
+                </Box>
+              </SortableContext>
+            </DndContext>
           )}
         </Box>
 
@@ -326,8 +376,25 @@ const CreateForm = () => {
         {/* Field Builder Dialog */}
         <FieldBuilder
           open={fieldBuilderOpen}
-          onClose={() => setFieldBuilderOpen(false)}
+          onClose={handleCloseFieldBuilder}
           onSave={handleAddField}
+          field={editingField}
+        />
+
+        {/* Delete Confirmation Dialog */}
+        <DeleteConfirmDialog
+          open={deleteDialogOpen}
+          onClose={() => setDeleteDialogOpen(false)}
+          onConfirm={confirmDeleteField}
+          fieldLabel={fieldToDelete?.label || ''}
+        />
+
+        {/* Form Name Dialog */}
+        <FormNameDialog
+          open={formNameDialogOpen}
+          onClose={() => setFormNameDialogOpen(false)}
+          onSave={handleSaveForm}
+          currentName={currentForm?.name}
         />
       </Box>
     </Layout>

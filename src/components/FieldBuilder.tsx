@@ -37,6 +37,7 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
   const [label, setLabel] = useState(field?.label || '');
   const [placeholder, setPlaceholder] = useState(field?.placeholder || '');
   const [required, setRequired] = useState(field?.required || false);
+  const [defaultValue, setDefaultValue] = useState(field?.defaultValue || '');
   const [validations, setValidations] = useState<ValidationRule[]>(field?.validations || []);
   const [options, setOptions] = useState<FieldOption[]>(field?.options || []);
   const [newOption, setNewOption] = useState({ label: '', value: '' });
@@ -69,6 +70,7 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
       label: label.trim(),
       placeholder: placeholder.trim() || undefined,
       required,
+      defaultValue: defaultValue.trim() || undefined,
       validations,
       ...(needsOptions() && { options }),
     };
@@ -83,6 +85,7 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
     setLabel('');
     setPlaceholder('');
     setRequired(false);
+    setDefaultValue('');
     setValidations([]);
     setOptions([]);
     setNewOption({ label: '', value: '' });
@@ -182,6 +185,13 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
               label="Placeholder Text"
               value={placeholder}
               onChange={(e) => setPlaceholder(e.target.value)}
+            />
+            <TextField
+              fullWidth
+              label="Default Value"
+              value={defaultValue}
+              onChange={(e) => setDefaultValue(e.target.value)}
+              helperText="This value will be pre-filled when the form is displayed"
             />
           </Box>
 
