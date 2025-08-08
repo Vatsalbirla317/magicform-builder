@@ -1,7 +1,7 @@
 // Form validation utilities
 import { FormField, ValidationRule, FieldError, FormValidationResult } from '../types/formBuilder';
 
-export const validateField = (field: FormField, value: any): FieldError[] => {
+export const validateField = (field: FormField, value: string | number | string[] | Date): FieldError[] => {
   const errors: FieldError[] = [];
 
   // Check required validation
@@ -29,54 +29,61 @@ export const validateField = (field: FormField, value: any): FieldError[] => {
   return errors;
 };
 
-const applyValidationRule = (field: FormField, value: any, rule: ValidationRule): FieldError | null => {
+const applyValidationRule = (field: FormField, value: string | number | string[] | Date, rule: ValidationRule): FieldError | null => {
   switch (rule.type) {
-    case 'required':
+    case 'required': {
       if (value === null || value === undefined || value === '') {
         return { fieldId: field.id, message: rule.message };
       }
       break;
+    }
 
-    case 'minLength':
+    case 'minLength': {
       if (typeof value === 'string' && rule.value && typeof rule.value === 'number' && value.length < rule.value) {
         return { fieldId: field.id, message: rule.message };
       }
       break;
+    }
 
-    case 'maxLength':
+    case 'maxLength': {
       if (typeof value === 'string' && rule.value && typeof rule.value === 'number' && value.length > rule.value) {
         return { fieldId: field.id, message: rule.message };
       }
       break;
+    }
 
-    case 'email':
+    case 'email': {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (typeof value === 'string' && !emailRegex.test(value)) {
         return { fieldId: field.id, message: rule.message };
       }
       break;
+    }
 
-    case 'password':
+    case 'password': {
       // Basic password validation: at least 8 chars, 1 uppercase, 1 lowercase, 1 number
       const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
       if (typeof value === 'string' && !passwordRegex.test(value)) {
         return { fieldId: field.id, message: rule.message };
       }
       break;
+    }
 
-    case 'min':
+    case 'min': {
       if (typeof value === 'number' && rule.value && typeof rule.value === 'number' && value < rule.value) {
         return { fieldId: field.id, message: rule.message };
       }
       break;
+    }
 
-    case 'max':
+    case 'max': {
       if (typeof value === 'number' && rule.value && typeof rule.value === 'number' && value > rule.value) {
         return { fieldId: field.id, message: rule.message };
       }
       break;
+    }
 
-    case 'custom':
+    case 'custom': {
       // For custom validation, the rule.value should contain a regex pattern
       if (rule.value && typeof value === 'string') {
         try {
@@ -89,12 +96,13 @@ const applyValidationRule = (field: FormField, value: any, rule: ValidationRule)
         }
       }
       break;
+    }
   }
 
   return null;
 };
 
-export const validateForm = (fields: FormField[], formData: Record<string, any>): FormValidationResult => {
+export const validateForm = (fields: FormField[], formData: Record<string, string | number | string[] | Date>): FormValidationResult => {
   const allErrors: FieldError[] = [];
 
   for (const field of fields) {

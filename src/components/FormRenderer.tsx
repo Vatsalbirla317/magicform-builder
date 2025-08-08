@@ -17,7 +17,8 @@ import {
   Alert,
   Paper,
   Typography,
-  Grid
+  Grid,
+  Snackbar
 } from '@mui/material';
 // We'll use regular date input for now instead of MUI date picker to avoid dependency issues
 import { FormSchema, FormField, FieldError } from '../types/formBuilder';
@@ -26,7 +27,7 @@ import { updateDerivedFields } from '../utils/derivedFields';
 
 interface FormRendererProps {
   form: FormSchema;
-  onSubmit?: (data: Record<string, any>) => void;
+  onSubmit?: (data: Record<string, string | number | string[] | Date>) => void;
   showSubmitButton?: boolean;
 }
 
@@ -37,16 +38,18 @@ const FormRenderer: React.FC<FormRendererProps> = ({
 }) => {
   // Initialize form data with default values
   const initializeFormData = (fields: FormField[]) => {
-    const initialData: Record<string, any> = {};
+    const initialData: Record<string, string | number | string[] | Date> = {};
     fields.forEach(field => {
       initialData[field.id] = field.defaultValue || '';
     });
     return initialData;
   };
 
-  const [formData, setFormData] = useState<Record<string, any>>(() => initializeFormData(form.fields));
+  const [formData, setFormData] = useState<Record<string, string | number | string[] | Date>>(() => initializeFormData(form.fields));
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   // Update form data when form changes
   useEffect(() => {
@@ -61,7 +64,7 @@ const FormRenderer: React.FC<FormRendererProps> = ({
     }
   }, [formData, form.fields]);
 
-  const handleFieldChange = (fieldId: string, value: any) => {
+  const handleFieldChange = (fieldId: string, value: string | number | string[] | Date) => {
     const newFormData = { ...formData, [fieldId]: value };
     setFormData(newFormData);
     setTouched({ ...touched, [fieldId]: true });
@@ -77,22 +80,38 @@ const FormRenderer: React.FC<FormRendererProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate all fields
-    const validationResult = validateForm(form.fields, formData);
-    setErrors(validationResult.errors);
+    setIsSubmitting(true);
     
-    // Mark all fields as touched
-    const allTouched = form.fields.reduce((acc, field) => {
-      acc[field.id] = true;
-      return acc;
-    }, {} as Record<string, boolean>);
-    setTouched(allTouched);
+    try {
+      // Validate all fields
+      const validationResult = validateForm(form.fields, formData);
+      setErrors(validationResult.errors);
+      
+      // Mark all fields as touched
+      const allTouched = form.fields.reduce((acc, field) => {
+        acc[field.id] = true;
+        return acc;
+      }, {} as Record<string, boolean>);
+      setTouched(allTouched);
 
-    if (validationResult.isValid && onSubmit) {
-      onSubmit(formData);
+      if (validationResult.isValid && onSubmit) {
+        await onSubmit(formData);
+        setShowSuccess(true);
+        // Reset form after successful submission
+        setTimeout(() => {
+          setFormData(initializeFormData(form.fields));
+          setTouched({});
+          setErrors([]);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Form submission error:', error);
+      setErrors([{ fieldId: 'general', message: 'An error occurred while submitting the form. Please try again.' }]);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -113,11 +132,12 @@ const FormRenderer: React.FC<FormRendererProps> = ({
             fullWidth
             label={field.label}
             placeholder={field.placeholder}
-            value={value}
+            value={value as string}
             onChange={(e) => handleFieldChange(field.id, e.target.value)}
             required={field.required}
             error={hasError}
             helperText={error}
+            disabled={isSubmitting}
           />
         );
 
@@ -128,11 +148,12 @@ const FormRenderer: React.FC<FormRendererProps> = ({
             type="number"
             label={field.label}
             placeholder={field.placeholder}
-            value={value}
+            value={value as number}
             onChange={(e) => handleFieldChange(field.id, parseFloat(e.target.value) || '')}
             required={field.required}
             error={hasError}
             helperText={error}
+            disabled={isSubmitting}
           />
         );
 
@@ -143,21 +164,22 @@ const FormRenderer: React.FC<FormRendererProps> = ({
             type="date"
             label={field.label}
             placeholder={field.placeholder}
-            value={value ? new Date(value).toISOString().split('T')[0] : ''}
+            value={value ? new Date(value as string).toISOString().split('T')[0] : ''}
             onChange={(e) => handleFieldChange(field.id, e.target.value ? new Date(e.target.value).toISOString() : '')}
             required={field.required}
             error={hasError}
             helperText={error}
             InputLabelProps={{ shrink: true }}
+            disabled={isSubmitting}
           />
         );
 
       case 'select':
         return (
-          <FormControl fullWidth required={field.required} error={hasError}>
+          <FormControl fullWidth required={field.required} error={hasError} disabled={isSubmitting}>
             <InputLabel>{field.label}</InputLabel>
             <Select
-              value={value}
+              value={value as string}
               onChange={(e) => handleFieldChange(field.id, e.target.value)}
               label={field.label}
             >
@@ -177,10 +199,10 @@ const FormRenderer: React.FC<FormRendererProps> = ({
 
       case 'radio':
         return (
-          <FormControl required={field.required} error={hasError}>
+          <FormControl required={field.required} error={hasError} disabled={isSubmitting}>
             <FormLabel>{field.label}</FormLabel>
             <RadioGroup
-              value={value}
+              value={value as string}
               onChange={(e) => handleFieldChange(field.id, e.target.value)}
             >
               {field.options?.map((option) => (
@@ -200,10 +222,10 @@ const FormRenderer: React.FC<FormRendererProps> = ({
           </FormControl>
         );
 
-      case 'checkbox':
+      case 'checkbox': {
         const checkboxValues = Array.isArray(value) ? value : [];
         return (
-          <FormControl required={field.required} error={hasError}>
+          <FormControl required={field.required} error={hasError} disabled={isSubmitting}>
             <FormLabel>{field.label}</FormLabel>
             <FormGroup>
               {field.options?.map((option) => (
@@ -231,6 +253,7 @@ const FormRenderer: React.FC<FormRendererProps> = ({
             )}
           </FormControl>
         );
+      }
 
       case 'textarea':
         return (
@@ -240,11 +263,12 @@ const FormRenderer: React.FC<FormRendererProps> = ({
             rows={4}
             label={field.label}
             placeholder={field.placeholder}
-            value={value}
+            value={value as string}
             onChange={(e) => handleFieldChange(field.id, e.target.value)}
             required={field.required}
             error={hasError}
             helperText={error}
+            disabled={isSubmitting}
           />
         );
 
@@ -256,6 +280,7 @@ const FormRenderer: React.FC<FormRendererProps> = ({
             value={value || 'Calculating...'}
             InputProps={{ readOnly: true }}
             variant="filled"
+            disabled={isSubmitting}
             sx={{ 
               '& .MuiFilledInput-root': { 
                 backgroundColor: 'action.hover' 
@@ -270,47 +295,58 @@ const FormRenderer: React.FC<FormRendererProps> = ({
   };
 
   return (
-    <Paper sx={{ p: 4 }}>
-      <form onSubmit={handleSubmit}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {form.fields
-            .sort((a, b) => a.order - b.order)
-            .map((field) => (
-              <Box key={field.id}>
-                {renderField(field)}
-              </Box>
-            ))}
-        </Box>
-
-        {errors.length > 0 && (
-          <Alert severity="error" sx={{ mt: 3 }}>
-            Please fix the following errors:
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
-              {errors.map((error, index) => (
-                <li key={index}>{error.message}</li>
+    <>
+      <Paper sx={{ p: 4 }}>
+        <form onSubmit={handleSubmit}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {[...form.fields]
+              .sort((a, b) => a.order - b.order)
+              .map((field) => (
+                <Box key={field.id}>
+                  {renderField(field)}
+                </Box>
               ))}
-            </ul>
-          </Alert>
-        )}
-
-        {showSubmitButton && (
-          <Box sx={{ mt: 4, textAlign: 'center' }}>
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              sx={{ 
-                px: 4,
-                py: 1.5,
-                background: 'var(--primary-gradient)',
-              }}
-            >
-              Submit Form
-            </Button>
           </Box>
-        )}
-      </form>
-    </Paper>
+
+          {errors.length > 0 && (
+            <Alert severity="error" sx={{ mt: 3 }}>
+              Please fix the following errors:
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                {errors.map((error, index) => (
+                  <li key={index}>{error.message}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
+
+          {showSubmitButton && (
+            <Box sx={{ mt: 4, textAlign: 'center' }}>
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                disabled={isSubmitting}
+                sx={{ 
+                  px: 4,
+                  py: 1.5,
+                  background: 'var(--primary-gradient)',
+                }}
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit Form'}
+              </Button>
+            </Box>
+          )}
+        </form>
+      </Paper>
+
+      {/* Success Message */}
+      <Snackbar
+        open={showSuccess}
+        autoHideDuration={6000}
+        onClose={() => setShowSuccess(false)}
+        message="Form submitted successfully!"
+      />
+    </>
   );
 };
 

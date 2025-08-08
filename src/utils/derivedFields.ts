@@ -1,15 +1,17 @@
 // Utilities for calculating derived fields
 import { FormField, DerivedFieldFormula } from '../types/formBuilder';
 
+type ContextValue = string | number | string[] | Date | ((...args: unknown[]) => unknown);
+
 // Simple formula evaluation engine
 export const evaluateDerivedField = (
   formula: DerivedFieldFormula, 
-  formData: Record<string, any>,
+  formData: Record<string, string | number | string[] | Date>,
   fields: FormField[]
-): any => {
+): string | number | null => {
   try {
     // Get dependent field values
-    const context: Record<string, any> = {};
+    const context: Record<string, ContextValue> = {};
     
     for (const fieldId of formula.dependsOn) {
       const field = fields.find(f => f.id === fieldId);
@@ -45,15 +47,16 @@ export const evaluateDerivedField = (
 };
 
 // Basic expression evaluator for simple formulas
-const evaluateExpression = (expression: string, context: Record<string, any>): any => {
+const evaluateExpression = (expression: string, context: Record<string, ContextValue>): string | number | null => {
   // Handle simple age calculation
   if (expression.includes('age(')) {
     const birthDateMatch = expression.match(/age\((\w+)\)/);
     if (birthDateMatch) {
       const fieldName = birthDateMatch[1];
       const birthDate = context[fieldName];
-      if (birthDate) {
-        return context.age(birthDate);
+      if (birthDate && typeof birthDate !== 'function') {
+        const ageFunc = context.age as (birthDate: string | Date) => number;
+        return ageFunc(birthDate as string | Date);
       }
     }
   }
@@ -88,7 +91,7 @@ const evaluateExpression = (expression: string, context: Record<string, any>): a
     const args = functionMatch[2].split(',').map(arg => {
       const trimmed = arg.trim();
       // If it's a field reference, get the value
-      if (context.hasOwnProperty(trimmed)) {
+      if (Object.prototype.hasOwnProperty.call(context, trimmed)) {
         return context[trimmed];
       }
       // If it's a number, parse it
@@ -100,14 +103,18 @@ const evaluateExpression = (expression: string, context: Record<string, any>): a
       return trimmed.replace(/['"]/g, '');
     });
 
-    if (context[funcName] && typeof context[funcName] === 'function') {
-      return context[funcName](...args);
+    if (Object.prototype.hasOwnProperty.call(context, funcName) && typeof context[funcName] === 'function') {
+      const func = context[funcName] as (...args: unknown[]) => unknown;
+      return func(...args) as string | number;
     }
   }
 
   // If no complex expression, try direct field reference
-  if (context.hasOwnProperty(expression)) {
-    return context[expression];
+  if (Object.prototype.hasOwnProperty.call(context, expression)) {
+    const value = context[expression];
+    if (typeof value !== 'function') {
+      return value as string | number;
+    }
   }
 
   return null;
@@ -115,8 +122,8 @@ const evaluateExpression = (expression: string, context: Record<string, any>): a
 
 export const updateDerivedFields = (
   fields: FormField[], 
-  formData: Record<string, any>
-): Record<string, any> => {
+  formData: Record<string, string | number | string[] | Date>
+): Record<string, string | number | string[] | Date> => {
   const updatedData = { ...formData };
   
   // Find all derived fields

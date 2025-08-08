@@ -34,7 +34,7 @@ export interface FormField {
   required?: boolean;
   validations: ValidationRule[];
   options?: FieldOption[]; // For select, radio
-  defaultValue?: any;
+  defaultValue?: string | number | string[] | Date;
   formula?: DerivedFieldFormula; // For derived fields
   order: number;
 }
@@ -57,7 +57,7 @@ export interface FormBuilderState {
 
 export interface FormSubmission {
   formId: string;
-  data: Record<string, any>;
+  data: Record<string, string | number | string[] | Date>;
   submittedAt: string;
 }
 

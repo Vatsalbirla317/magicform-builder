@@ -24,6 +24,18 @@ const PreviewForm = () => {
   const { currentForm, savedForms } = useSelector((state: RootState) => state.formBuilder);
   const [loading, setLoading] = useState(true);
 
+  const handleFormSubmit = async (formData: Record<string, string | number | string[] | Date>) => {
+    try {
+      console.log('Form submitted with data:', formData);
+      // Here you would typically send the data to your backend
+      // For now, we'll just log it and show a success message
+      alert('Form submitted successfully! Check the console for the submitted data.');
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     const loadFormData = async () => {
       try {
@@ -118,7 +130,7 @@ const PreviewForm = () => {
           </CardContent>
         </Card>
 
-        <FormRenderer form={currentForm} />
+        <FormRenderer form={currentForm} onSubmit={handleFormSubmit} />
       </Box>
     </Layout>
   );

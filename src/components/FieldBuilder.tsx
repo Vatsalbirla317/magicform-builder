@@ -1,5 +1,5 @@
 // Field Builder component for creating and editing form fields
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -20,19 +20,21 @@ import {
   Card,
   CardContent,
   IconButton,
-  Divider
+  Divider,
+  Alert
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
-import { FormField, FieldType, ValidationRule, FieldOption } from '../types/formBuilder';
+import { FormField, FieldType, ValidationRule, FieldOption, DerivedFieldFormula } from '../types/formBuilder';
 
 interface FieldBuilderProps {
   open: boolean;
   onClose: () => void;
   onSave: (field: Omit<FormField, 'id' | 'order'>) => void;
   field?: FormField;
+  currentForm?: { fields: FormField[] };
 }
 
-const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, field }) => {
+const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, field, currentForm }) => {
   const [fieldType, setFieldType] = useState<FieldType>(field?.type || 'text');
   const [label, setLabel] = useState(field?.label || '');
   const [placeholder, setPlaceholder] = useState(field?.placeholder || '');
@@ -41,6 +43,35 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
   const [validations, setValidations] = useState<ValidationRule[]>(field?.validations || []);
   const [options, setOptions] = useState<FieldOption[]>(field?.options || []);
   const [newOption, setNewOption] = useState({ label: '', value: '' });
+  
+  // Derived field states
+  const [parentFields, setParentFields] = useState<string[]>(field?.formula?.dependsOn || []);
+  const [formula, setFormula] = useState(field?.formula?.expression || '');
+  const [formulaPreview, setFormulaPreview] = useState<string>('');
+
+  // Update form when editing existing field
+  useEffect(() => {
+    if (field) {
+      setFieldType(field.type);
+      setLabel(field.label);
+      setPlaceholder(field.placeholder || '');
+      setRequired(field.required || false);
+      setDefaultValue(field.defaultValue || '');
+      setValidations(field.validations || []);
+      setOptions(field.options || []);
+      setParentFields(field.formula?.dependsOn || []);
+      setFormula(field.formula?.expression || '');
+    }
+  }, [field]);
+
+  // Update formula preview when formula or parent fields change
+  useEffect(() => {
+    if (fieldType === 'derived' && formula && parentFields.length > 0) {
+      setFormulaPreview(`Formula: ${formula}`);
+    } else {
+      setFormulaPreview('');
+    }
+  }, [formula, parentFields, fieldType]);
 
   const fieldTypes: { value: FieldType; label: string }[] = [
     { value: 'text', label: 'Text Input' },
@@ -73,6 +104,12 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
       defaultValue: defaultValue.trim() || undefined,
       validations,
       ...(needsOptions() && { options }),
+      ...(fieldType === 'derived' && {
+        formula: {
+          expression: formula,
+          dependsOn: parentFields
+        }
+      }),
     };
 
     onSave(newField);
@@ -89,6 +126,9 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
     setValidations([]);
     setOptions([]);
     setNewOption({ label: '', value: '' });
+    setParentFields([]);
+    setFormula('');
+    setFormulaPreview('');
     onClose();
   };
 
@@ -138,6 +178,17 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
   const removeOption = (index: number) => {
     setOptions(options.filter((_, i) => i !== index));
   };
+
+  const addFormulaTemplate = (template: string) => {
+    setFormula(template);
+  };
+
+  const formulaTemplates = [
+    { label: 'Age from Birth Date', formula: 'age(birthDate)' },
+    { label: 'Sum of Numbers', formula: 'sum(field1, field2)' },
+    { label: 'Average of Numbers', formula: 'avg(field1, field2, field3)' },
+    { label: 'Today\'s Date', formula: 'today()' },
+  ];
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
@@ -196,6 +247,98 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
           </Box>
 
           <Divider sx={{ my: 3 }} />
+
+          {/* Derived Field Configuration */}
+          {fieldType === 'derived' && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                Derived Field Configuration
+              </Typography>
+              
+              {/* Parent Fields Selection */}
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Parent Fields</InputLabel>
+                <Select
+                  multiple
+                  value={parentFields}
+                  onChange={(e) => setParentFields(e.target.value as string[])}
+                  label="Parent Fields"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected.map((value) => {
+                        const field = currentForm?.fields.find(f => f.id === value);
+                        return (
+                          <Chip key={value} label={field?.label || value} size="small" />
+                        );
+                      })}
+                    </Box>
+                  )}
+                >
+                  {currentForm?.fields
+                    .filter(f => f.id !== field?.id && f.type !== 'derived')
+                    .map((f) => (
+                      <MenuItem key={f.id} value={f.id}>
+                        {f.label} ({f.type})
+                      </MenuItem>
+                    ))}
+                </Select>
+                <Typography variant="caption" color="textSecondary">
+                  Select the fields this derived field depends on
+                </Typography>
+              </FormControl>
+
+              {/* Formula Input */}
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Formula"
+                value={formula}
+                onChange={(e) => setFormula(e.target.value)}
+                placeholder="Example: age(birthDate) or sum(field1, field2)"
+                helperText="Use field labels and functions like age(), sum(), avg(), today()"
+                sx={{ mb: 2 }}
+              />
+
+              {/* Formula Templates */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                  Common formula templates:
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {formulaTemplates.map((template) => (
+                    <Chip
+                      key={template.label}
+                      label={template.label}
+                      onClick={() => addFormulaTemplate(template.formula)}
+                      variant="outlined"
+                      size="small"
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+
+              {/* Formula Preview */}
+              {formulaPreview && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  {formulaPreview}
+                </Alert>
+              )}
+
+              {/* Validation for derived fields */}
+              {parentFields.length === 0 && (
+                <Alert severity="warning">
+                  Please select at least one parent field for the derived field.
+                </Alert>
+              )}
+              {formula.trim() === '' && (
+                <Alert severity="warning">
+                  Please enter a formula for the derived field.
+                </Alert>
+              )}
+            </Box>
+          )}
 
           {/* Options for select/radio/checkbox fields */}
           {needsOptions() && (
@@ -314,7 +457,7 @@ const FieldBuilder: React.FC<FieldBuilderProps> = ({ open, onClose, onSave, fiel
         <Button 
           onClick={handleSave} 
           variant="contained" 
-          disabled={!label.trim()}
+          disabled={!label.trim() || (fieldType === 'derived' && (parentFields.length === 0 || formula.trim() === ''))}
           sx={{ background: 'var(--primary-gradient)' }}
         >
           {field ? 'Update Field' : 'Add Field'}

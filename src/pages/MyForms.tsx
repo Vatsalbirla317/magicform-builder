@@ -113,7 +113,7 @@ const MyForms = () => {
             gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' },
             gap: 3 
           }}>
-            {savedForms
+            {[...savedForms]
               .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
               .map((form) => (
                 <Card 

@@ -88,11 +88,12 @@ const formBuilderSlice = createSlice({
 
     deleteField: (state, action: PayloadAction<string>) => {
       if (state.currentForm) {
-        state.currentForm.fields = state.currentForm.fields.filter(f => f.id !== action.payload);
-        // Reorder remaining fields
-        state.currentForm.fields.forEach((field, index) => {
-          field.order = index;
-        });
+        state.currentForm.fields = state.currentForm.fields
+          .filter(f => f.id !== action.payload)
+          .map((field, index) => ({
+            ...field,
+            order: index,
+          }));
       }
     },
 
@@ -103,12 +104,11 @@ const formBuilderSlice = createSlice({
         const [movedField] = fields.splice(fromIndex, 1);
         fields.splice(toIndex, 0, movedField);
         
-        // Update order values
-        fields.forEach((field, index) => {
-          field.order = index;
-        });
-        
-        state.currentForm.fields = fields;
+        // Update order values by creating new field objects
+        state.currentForm.fields = fields.map((field, index) => ({
+          ...field,
+          order: index,
+        }));
       }
     },
 

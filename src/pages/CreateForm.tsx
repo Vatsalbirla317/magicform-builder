@@ -13,7 +13,8 @@ import {
   DialogActions,
   Fab,
   Paper,
-  Chip
+  Chip,
+  Alert
 } from '@mui/material';
 import { 
   Add, 
@@ -69,6 +70,7 @@ const CreateForm = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [fieldToDelete, setFieldToDelete] = useState<FormField | null>(null);
   const [formNameDialogOpen, setFormNameDialogOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -78,93 +80,143 @@ const CreateForm = () => {
   );
 
   useEffect(() => {
-    // Load saved forms from localStorage on mount
-    const savedForms = localStorageUtils.loadForms();
-    dispatch(loadSavedForms(savedForms));
+    try {
+      // Load saved forms from localStorage on mount
+      const savedForms = localStorageUtils.loadForms();
+      console.log('Loaded saved forms:', savedForms);
+      dispatch(loadSavedForms(savedForms));
+    } catch (err) {
+      console.error('Error loading saved forms:', err);
+      setError('Failed to load saved forms. Please refresh the page.');
+    }
   }, [dispatch]);
 
   const handleCreateNewForm = () => {
-    if (formName.trim()) {
-      dispatch(createNewForm({
-        name: formName.trim(),
-        description: formDescription.trim() || undefined
-      }));
-      setNewFormDialogOpen(false);
-      setFormName('');
-      setFormDescription('');
+    try {
+      if (formName.trim()) {
+        console.log('Creating new form:', formName);
+        dispatch(createNewForm({
+          name: formName.trim(),
+          description: formDescription.trim() || undefined
+        }));
+        setNewFormDialogOpen(false);
+        setFormName('');
+        setFormDescription('');
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error creating new form:', err);
+      setError('Failed to create new form. Please try again.');
     }
   };
 
   const handleSaveForm = (name?: string) => {
-    if (currentForm) {
-      if (name) {
-        dispatch(updateFormMetadata({ name }));
+    try {
+      if (currentForm) {
+        if (name) {
+          dispatch(updateFormMetadata({ name }));
+        }
+        dispatch(saveCurrentForm());
+        // Persist to localStorage
+        const savedForms = localStorageUtils.loadForms();
+        const existingIndex = savedForms.findIndex(f => f.id === currentForm.id);
+        const updatedForm = {
+          ...currentForm,
+          ...(name && { name }),
+          updatedAt: new Date().toISOString()
+        };
+        
+        if (existingIndex >= 0) {
+          savedForms[existingIndex] = updatedForm;
+        } else {
+          savedForms.push(updatedForm);
+        }
+        
+        localStorageUtils.saveForms(savedForms);
+        setError(null);
       }
-      dispatch(saveCurrentForm());
-      // Persist to localStorage
-      const savedForms = localStorageUtils.loadForms();
-      const existingIndex = savedForms.findIndex(f => f.id === currentForm.id);
-      const updatedForm = {
-        ...currentForm,
-        ...(name && { name }),
-        updatedAt: new Date().toISOString()
-      };
-      
-      if (existingIndex >= 0) {
-        savedForms[existingIndex] = updatedForm;
-      } else {
-        savedForms.push(updatedForm);
-      }
-      
-      localStorageUtils.saveForms(savedForms);
+    } catch (err) {
+      console.error('Error saving form:', err);
+      setError('Failed to save form. Please try again.');
     }
   };
 
   const handleAddField = (field: Omit<FormField, 'id' | 'order'>) => {
-    if (editingField) {
-      dispatch(updateField({ fieldId: editingField.id, updates: field }));
-      setEditingField(undefined);
-    } else {
-      dispatch(addField(field as FormField));
+    try {
+      if (editingField) {
+        dispatch(updateField({ fieldId: editingField.id, updates: field }));
+        setEditingField(undefined);
+      } else {
+        dispatch(addField(field as FormField));
+      }
+      setFieldBuilderOpen(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error adding/updating field:', err);
+      setError('Failed to add/update field. Please try again.');
     }
-    setFieldBuilderOpen(false);
   };
 
   const handleEditField = (field: FormField) => {
-    setEditingField(field);
-    setFieldBuilderOpen(true);
+    try {
+      setEditingField(field);
+      setFieldBuilderOpen(true);
+      setError(null);
+    } catch (err) {
+      console.error('Error editing field:', err);
+      setError('Failed to edit field. Please try again.');
+    }
   };
 
   const handleDeleteField = (fieldId: string) => {
-    const field = currentForm?.fields.find(f => f.id === fieldId);
-    if (field) {
-      setFieldToDelete(field);
-      setDeleteDialogOpen(true);
+    try {
+      const field = currentForm?.fields.find(f => f.id === fieldId);
+      if (field) {
+        setFieldToDelete(field);
+        setDeleteDialogOpen(true);
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error deleting field:', err);
+      setError('Failed to delete field. Please try again.');
     }
   };
 
   const confirmDeleteField = () => {
-    if (fieldToDelete) {
-      dispatch(deleteField(fieldToDelete.id));
-      setFieldToDelete(null);
-      setDeleteDialogOpen(false);
+    try {
+      if (fieldToDelete) {
+        dispatch(deleteField(fieldToDelete.id));
+        setFieldToDelete(null);
+        setDeleteDialogOpen(false);
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error confirming field deletion:', err);
+      setError('Failed to delete field. Please try again.');
     }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
+    try {
+      const { active, over } = event;
 
-    if (over && active.id !== over.id && currentForm) {
-      const oldIndex = currentForm.fields.findIndex(field => field.id === active.id);
-      const newIndex = currentForm.fields.findIndex(field => field.id === over.id);
-      
-      dispatch(reorderFields({ fromIndex: oldIndex, toIndex: newIndex }));
+      if (over && active.id !== over.id && currentForm) {
+        const oldIndex = currentForm.fields.findIndex(field => field.id === active.id);
+        const newIndex = currentForm.fields.findIndex(field => field.id === over.id);
+        
+        dispatch(reorderFields({ fromIndex: oldIndex, toIndex: newIndex }));
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error reordering fields:', err);
+      setError('Failed to reorder fields. Please try again.');
     }
   };
 
   const handleCloseFieldBuilder = () => {
     setFieldBuilderOpen(false);
     setEditingField(undefined);
+    setError(null);
   };
 
   const fieldTypes: { type: FieldType; label: string; color: string }[] = [
@@ -185,6 +237,11 @@ const CreateForm = () => {
           <Typography variant="h4" sx={{ mb: 4, fontWeight: 600 }}>
             Create a New Form
           </Typography>
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {error}
+            </Alert>
+          )}
           <Button
             variant="contained"
             size="large"
@@ -237,6 +294,12 @@ const CreateForm = () => {
   return (
     <Layout>
       <Box sx={{ mb: 4 }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+        
         {/* Form Header */}
         <Card sx={{ mb: 4 }}>
           <CardContent>
@@ -296,7 +359,7 @@ const CreateForm = () => {
               <Chip
                 key={fieldType.type}
                 label={fieldType.label}
-                color={fieldType.color as any}
+                color={fieldType.color as 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info'}
                 onClick={() => setFieldBuilderOpen(true)}
                 sx={{ 
                   px: 2, 
@@ -343,7 +406,7 @@ const CreateForm = () => {
                 strategy={verticalListSortingStrategy}
               >
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {currentForm.fields
+                  {[...currentForm.fields]
                     .sort((a, b) => a.order - b.order)
                     .map((field) => (
                       <SortableFieldCard
@@ -379,6 +442,7 @@ const CreateForm = () => {
           onClose={handleCloseFieldBuilder}
           onSave={handleAddField}
           field={editingField}
+          currentForm={currentForm}
         />
 
         {/* Delete Confirmation Dialog */}
